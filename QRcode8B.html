@@ -1,0 +1,304 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>供應室器材 QR Code 標籤產生器</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#f4f5f7;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans TC","Microsoft JhengHei",sans-serif;color:#111}
+.wrap{max-width:780px;margin:28px auto;padding:16px}
+.card{background:#fff;border-radius:16px;padding:22px;box-shadow:0 8px 28px rgba(0,0,0,.08)}
+h1{margin:0 0 18px;font-size:26px}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.field label{display:block;font-size:15px;font-weight:800;margin-bottom:6px}
+input{width:100%;height:52px;border:2px solid #cfd4dc;border-radius:10px;padding:0 12px;font-size:18px}
+input:focus{outline:none;border-color:#111}
+.hint{font-size:12px;color:#666;margin-top:6px}
+.qrContentBox{border-color:#4f46e5}
+.buttons{display:flex;gap:10px;flex-wrap:wrap;margin-top:16px}
+button{border:0;border-radius:10px;padding:12px 18px;font-size:16px;font-weight:800;cursor:pointer}
+#update{background:#e5e7eb}
+#download{background:#111;color:#fff}
+#printBtn{background:#2563eb;color:#fff}
+.status{margin-top:10px;font-size:13px;color:#555}
+.verify{margin-top:14px;padding:12px 14px;background:#f3f4f6;border-radius:10px;font-size:14px;word-break:break-all}
+.verify b{display:block;margin-bottom:4px}
+.previewTitle{margin:22px 0 10px;font-weight:800}
+.previewBox{background:#e5e7eb;padding:14px;border-radius:12px;overflow:auto}
+.label{width:500px;height:300px;margin:auto;background:#fff;border:1px solid #bbb;display:grid;grid-template-columns:64% 36%;align-items:center}
+.left{padding:34px}
+.cap{font-size:24px;font-weight:700;margin-bottom:12px}
+.name{font-size:38px;font-weight:900;line-height:1.1;word-break:break-word}
+.right{display:flex;justify-content:center;align-items:center;padding:18px}
+#qr canvas,#qr img{width:150px!important;height:150px!important;image-rendering:pixelated}
+@media(max-width:600px){
+  .grid{grid-template-columns:1fr}
+  .label{width:100%;min-width:320px;height:auto;aspect-ratio:5/3}
+  .left{padding:20px}
+  .cap{font-size:18px}
+  .name{font-size:28px}
+  #qr canvas,#qr img{width:110px!important;height:110px!important}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="card">
+    <h1>供應室器材 QR Code 標籤產生器</h1>
+
+    <div class="grid">
+      <div class="field">
+        <label for="equipmentName">器材名稱</label>
+        <input id="equipmentName" value="換藥包" placeholder="例如：換藥包">
+        <div class="hint">只顯示在標籤左側</div>
+      </div>
+
+      <div class="field">
+        <label for="qrText">QR Code 文字內容</label>
+        <input id="qrText" class="qrContentBox" placeholder="請填入條碼編號">
+        <div class="hint">這一格的內容會原封不動轉成 QR Code</div>
+      </div>
+    </div>
+
+    <div class="buttons">
+      <button id="update" type="button">生成 / 更新 QR Code</button>
+      <button id="download" type="button">下載  PNG</button>
+      <button id="printBtn" type="button">列印(請選擇5X3印表機)</button>
+    </div>
+
+    <div class="status" id="status">已準備完成</div>
+
+    <div class="verify">
+      <b>目前 QR Code 實際編碼內容：</b>
+      <span id="encodedPreview">換藥包</span>
+    </div>
+
+    <div class="previewTitle">標籤預覽</div>
+    <div class="previewBox">
+      <div class="label">
+        <div class="left">
+          <div class="cap">器材名稱：</div>
+          <div class="name" id="namePreview">換藥包</div>
+          <div id="qrTextOnLabel" style="margin-top:12px;font-size:18px;font-weight:600;line-height:1.25;word-break:break-all;">換藥包</div>
+        </div>
+        <div class="right">
+          <div id="qr"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<canvas id="exportCanvas" width="591" height="354" style="display:none"></canvas>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script>
+(function(){
+  const equipmentName = document.getElementById('equipmentName');
+  const qrText = document.getElementById('qrText');
+  const namePreview = document.getElementById('namePreview');
+  const qrBox = document.getElementById('qr');
+  const status = document.getElementById('status');
+  const encodedPreview = document.getElementById('encodedPreview');
+  const qrTextOnLabel = document.getElementById('qrTextOnLabel');
+  const exportCanvas = document.getElementById('exportCanvas');
+
+  function getName(){
+    return equipmentName.value.trim() || '未命名器材';
+  }
+
+  function getQRText(){
+    return qrText.value;
+  }
+
+  function generate(){
+    const content = getQRText();
+    namePreview.textContent = getName();
+    encodedPreview.textContent = content === '' ? '（空白）' : content;
+    qrTextOnLabel.textContent = content === '' ? '' : content;
+    qrBox.innerHTML = '';
+
+    if(content === ''){
+      status.textContent = '請輸入 QR Code 文字內容';
+      return false;
+    }
+
+    if(typeof QRCode === 'undefined'){
+      status.textContent = 'QR Code 元件載入失敗，請確認電腦目前可連上網路';
+      return false;
+    }
+
+    new QRCode(qrBox,{
+      text: content,
+      width: 240,
+      height: 240,
+      correctLevel: QRCode.CorrectLevel.M
+    });
+
+    status.textContent = 'QR Code 已更新';
+    return true;
+  }
+
+  function getQRSource(){
+    const c = qrBox.querySelector('canvas');
+    if(c) return c;
+
+    const img = qrBox.querySelector('img');
+    if(img && img.complete){
+      const temp = document.createElement('canvas');
+      temp.width = img.naturalWidth || 240;
+      temp.height = img.naturalHeight || 240;
+      temp.getContext('2d').drawImage(img,0,0,temp.width,temp.height);
+      return temp;
+    }
+    return null;
+  }
+
+  function buildFinalImage(){
+    if(!generate()) return null;
+
+    const sourceQR = getQRSource();
+    if(!sourceQR){
+      status.textContent = 'QR Code 尚未完成，請再按一次';
+      return null;
+    }
+
+    const ctx = exportCanvas.getContext('2d');
+    const name = getName();
+
+    ctx.clearRect(0,0,591,354);
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(0,0,591,354);
+
+    ctx.strokeStyle = '#d0d0d0';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(1,1,589,352);
+
+    ctx.fillStyle = '#111';
+    ctx.textBaseline = 'top';
+    ctx.font = '700 30px "Microsoft JhengHei","Noto Sans TC",sans-serif';
+    ctx.fillText('器材名稱：',40,85);
+
+    let fs = 48;
+    while(fs > 26){
+      ctx.font = '800 ' + fs + 'px "Microsoft JhengHei","Noto Sans TC",sans-serif';
+      if(ctx.measureText(name).width <= 310) break;
+      fs--;
+    }
+
+    const chars = Array.from(name);
+    const lines = [];
+    let line = '';
+    for(const ch of chars){
+      const test = line + ch;
+      if(ctx.measureText(test).width > 310 && line){
+        lines.push(line);
+        line = ch;
+      }else{
+        line = test;
+      }
+    }
+    if(line) lines.push(line);
+
+    lines.slice(0,2).forEach(function(l,i){
+      ctx.fillText(l,40,135+i*(fs+5));
+    });
+
+    // 在器材名稱下方顯示 QR Code 的實際文字內容
+    const qrLabelText = getQRText();
+    ctx.fillStyle = '#111';
+    let qrFs = 22;
+    while(qrFs > 14){
+      ctx.font = `600 ${qrFs}px "Microsoft JhengHei","Noto Sans TC",sans-serif`;
+      if(ctx.measureText(qrLabelText).width <= 310) break;
+      qrFs--;
+    }
+    const qrChars = [...qrLabelText];
+    const qrLines = [];
+    let qrLine = '';
+    for(const ch of qrChars){
+      const test = qrLine + ch;
+      if(ctx.measureText(test).width > 310 && qrLine){
+        qrLines.push(qrLine);
+        qrLine = ch;
+      }else{
+        qrLine = test;
+      }
+    }
+    if(qrLine) qrLines.push(qrLine);
+    qrLines.slice(0,2).forEach((l,i)=>{
+      ctx.fillText(l,40,245+i*(qrFs+3));
+    });
+
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(sourceQR,350,72,210,210);
+
+    return exportCanvas.toDataURL('image/png');
+  }
+
+  function downloadPNG(){
+    const dataUrl = buildFinalImage();
+    if(!dataUrl) return;
+
+    const safe = getName().replace(/[\\/:*?"<>|]/g,'_').slice(0,30);
+    const a = document.createElement('a');
+    a.href = dataUrl;
+    a.download = '器材標籤_' + safe + '_50x30mm.png';
+    a.click();
+    status.textContent = 'PNG 已輸出';
+  }
+
+  function printLabel(){
+    /* 必須在按鈕點擊當下先開啟視窗，避免瀏覽器把它當成彈出式廣告阻擋 */
+    const printWindow = window.open('', '_blank', 'width=700,height=500');
+
+    if(!printWindow){
+      alert('瀏覽器阻擋了列印視窗。請允許此網頁開啟彈出式視窗。');
+      return;
+    }
+
+    const dataUrl = buildFinalImage();
+
+    if(!dataUrl){
+      printWindow.close();
+      return;
+    }
+
+    printWindow.document.open();
+    printWindow.document.write(
+      '<!doctype html>' +
+      '<html lang="zh-Hant">' +
+      '<head><meta charset="utf-8"><title>列印標籤</title>' +
+      '<style>' +
+      '@page{size:50mm 30mm;margin:0;}' +
+      'html,body{width:50mm;height:30mm;margin:0;padding:0;background:#fff;overflow:hidden;}' +
+      'img{display:block;width:50mm;height:30mm;margin:0;padding:0;}' +
+      '</style></head>' +
+      '<body><img id="printImage" alt="器材標籤"></body></html>'
+    );
+    printWindow.document.close();
+
+    const image = printWindow.document.getElementById('printImage');
+    image.onload = function(){
+      printWindow.focus();
+      setTimeout(function(){
+        printWindow.print();
+      },200);
+    };
+    image.src = dataUrl;
+
+    status.textContent = '已開啟列印視窗，請選擇 5X3 印表機';
+  }
+
+  document.getElementById('update').addEventListener('click', generate);
+  document.getElementById('download').addEventListener('click', downloadPNG);
+  document.getElementById('printBtn').addEventListener('click', printLabel);
+  equipmentName.addEventListener('input', generate);
+  qrText.addEventListener('input', generate);
+
+  generate();
+})();
+</script>
+</body>
+</html>
